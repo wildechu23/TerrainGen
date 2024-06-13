@@ -4,7 +4,7 @@ import { mat4, vec3 } from 'wgpu-matrix';
 import { WASDCamera } from './camera/camera';
 import { createInputHandler } from './camera/input';
 import { Chunk, createChunk } from './chunk';
-import { initUtils } from './marchingcubes/utils'
+import { initUtils } from './utils'
 
 // TODO: GROUP UTIL TABLES INTO OWN GROUP BEFORE BINDING
 
@@ -13,7 +13,12 @@ const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 const inputHandler = createInputHandler(window, canvas);
 
 const adapter = await navigator.gpu.requestAdapter();
-const device = await adapter?.requestDevice()!;
+const canTimestamp = adapter?.features.has('timestamp-query');
+const device = await adapter?.requestDevice({
+  requiredFeatures: [
+    ...(canTimestamp ? ['timestamp-query' as GPUFeatureName] : []),
+  ]
+})!;
 
 const context = canvas.getContext('webgpu') as GPUCanvasContext;
 
