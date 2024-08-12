@@ -2,7 +2,7 @@
 var volume_texture: texture_3d<f32>;
 
 @group(0) @binding(1)
-var<storage> case_table: array<i32>;
+var<storage> vert_table: array<i32>;
 
 @group(0) @binding(2)
 var<storage, read_write> counters: array<atomic<u32>>;
@@ -48,7 +48,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
 
     if(case_index * (255 - case_index) > 0) {
-        let num_verts = case_table[case_index];
+        let num_verts = vert_table[case_index];
         let index = atomicAdd(&counters[0], 1u);
 
         let z8_y8_x8_case8 = (id.z << 24) | (id.y << 16) | (id.x << 8) | case_index;
@@ -57,3 +57,5 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
 
 }
+
+// TODO: dont count verts, count total 0,3,8 verts

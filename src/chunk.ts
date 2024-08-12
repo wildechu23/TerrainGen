@@ -1,11 +1,11 @@
-import marchingCubesWGSL from './shaders/marchingcubes.wgsl?raw';
-import activeVoxelsWGSL from './shaders/active_voxels.wgsl?raw';
 import densityWGSL from './shaders/density.wgsl?raw';
+import activeVoxelsWGSL from './shaders/active_voxels.wgsl?raw';
+import marchingCubesWGSL from './shaders/marchingcubes.wgsl?raw';
 
 import { Vec3 } from 'wgpu-matrix';
 
 import { numPoints, workgroupCount } from './table';
-import { caseTable, vertTable} from './utils';
+import { caseTable, vertTable } from './utils';
 
 export interface Chunk {
     coord: Vec3;
@@ -26,7 +26,7 @@ export interface ChunkGen {
 export async function createChunk(device: GPUDevice, coord: Vec3) {
     const querySet = device.createQuerySet({
         type: 'timestamp',
-        count: 2,
+        count: 6,
     });
     const resolveBuffer = device.createBuffer({
         size: querySet.count * 8,
@@ -63,7 +63,6 @@ export async function createChunk(device: GPUDevice, coord: Vec3) {
         resultBuffer: resultBuffer,
     };
 
-
     await createDensityTexture(gen); 
 
     // counters[0]: index, counters[1]: numVerts
@@ -71,7 +70,14 @@ export async function createChunk(device: GPUDevice, coord: Vec3) {
 
     await findActiveVoxels(gen, counters);
 
-    if(counters[1] == 0) {
+    // Markers of the form z8y8x8_case8
+
+    // TODO: Test whether 1 pass or 2 passes are faster
+    //      - 1 pass: num_verts + vert_offsets (uses atomicAdd)
+    //      - 2 pass: count active ( not 0 or 255) + voxel_offset, then vert_offsets
+
+    // no active voxels
+    if(counters[0] == 0) {
         return null;
     }
    
@@ -147,20 +153,24 @@ async function createDensityTexture(gen: ChunkGen) {
         },
     }); 
 
+    let computePassDesc = {
+        timestampWrites: {
+            querySet: gen.querySet,
+            beginningOfPassWriteIndex: 0,
+            endOfPassWriteIndex: 1,
+        },
+    };
+
     const commandEncoder = gen.device.createCommandEncoder();
-    const densityPass = commandEncoder.beginComputePass();
+    const densityPass = commandEncoder.beginComputePass(computePassDesc);
     densityPass.setPipeline(computeDensityPipeline);
     densityPass.setBindGroup(0, densityBindGroup);
     densityPass.dispatchWorkgroups(workgroupCount, workgroupCount, workgroupCount);
     densityPass.end();
 
     commandEncoder.copyTextureToTexture(
-        {
-          texture: densityTexture,
-        },
-        {
-          texture: gen.volumeTexture,
-        },
+        { texture: densityTexture },
+        { texture: gen.volumeTexture },
         {
           width: numPoints,
           height: numPoints,
@@ -232,8 +242,16 @@ async function findActiveVoxels(gen: ChunkGen, counters: Uint32Array) {
         },
     });
 
+    let computePassDesc = {
+        timestampWrites: {
+            querySet: gen.querySet,
+            beginningOfPassWriteIndex: 2,
+            endOfPassWriteIndex: 3,
+        },
+    };
+
     const commandEncoder = gen.device.createCommandEncoder();
-    const activeVoxelsPass = commandEncoder.beginComputePass();
+    const activeVoxelsPass = commandEncoder.beginComputePass(computePassDesc);
     activeVoxelsPass.setPipeline(computeActiveVoxelsPipeline);
     activeVoxelsPass.setBindGroup(0, activeVoxelsBindGroup);
     activeVoxelsPass.dispatchWorkgroups(workgroupCount, workgroupCount, workgroupCount);
@@ -335,8 +353,8 @@ async function createMarchingCubesVertices(gen: ChunkGen, numMarkers: number) {
     let computePassDesc = {
         timestampWrites: {
             querySet: gen.querySet,
-            beginningOfPassWriteIndex: 0,
-            endOfPassWriteIndex: 1,
+            beginningOfPassWriteIndex: 4,
+            endOfPassWriteIndex: 5,
         },
     };
 
@@ -356,8 +374,82 @@ async function createMarchingCubesVertices(gen: ChunkGen, numMarkers: number) {
 
     gen.resultBuffer.mapAsync(GPUMapMode.READ).then(() => {
         const times = new BigInt64Array(gen.resultBuffer.getMappedRange());
-        let gpuTime = Number(times[1] - times[0]) / 1000000;
-        console.log(`${gpuTime} ms`);
+        let densityGPUTime = Number(times[1] - times[0]) / 1000000;
+        let activeGPUTime = Number(times[3] - times[2]) / 1000000;
+        let marchingGPUTime = Number(times[5] - times[4]) / 1000000;
+        let totalGPUTime = densityGPUTime + activeGPUTime + marchingGPUTime;
+        let totalTime = Number(times[5] - times[0]) / 1000000;
+        // console.log(`${densityGPUTime} ms, ${activeGPUTime} ms, ${marchingGPUTime} ms`);
+        // console.log(`${totalGPUTime} ms, ${totalTime}`);
         gen.resultBuffer.unmap();
     });
 }
+
+// TODO: index buffers don't seem viable with compute shaders, since things run in parallel
+/*async function splatVertices(gen: ChunkGen, numMarkers: number) {
+    // 3N * N * N
+    let vertexIdVol = gen.device.createTexture({
+        size: [3 * numPoints, numPoints, numPoints],
+        format: "r32uint",
+        dimension: "3d",
+        usage:
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.STORAGE_BINDING |
+            GPUTextureUsage.COPY_SRC,
+    });
+
+    const splatVerticesBindGroupLayout = gen.device.createBindGroupLayout({
+        label: "Splat Vertices Bind Group Layout",
+        entries: [{
+            binding: 0,
+            visibility: GPUShaderStage.COMPUTE,
+            storageTexture: {
+                access: "write-only",
+                format: "r32uint",
+                viewDimension: "3d",
+            }
+        }, {
+            binding: 1,
+            visibility: GPUShaderStage.COMPUTE,
+            buffer: {
+                type: "read-only-storage",
+            }
+        }]
+    });
+
+    const splatVerticesBindGroup = gen.device.createBindGroup({
+        label: "Splat Vertices Bind Group",
+        layout: splatVerticesBindGroupLayout,
+        entries: [
+            { binding: 0, resource: vertexIdVol.createView() },
+            { binding: 1, resource: { buffer: gen.voxelMarkerBuffer} },
+        ],
+    });
+
+    const splatVerticesPipelineLayout = gen.device.createPipelineLayout({
+        label: "Splat Vertices Pipeline Layout",
+        bindGroupLayouts: [ splatVerticesBindGroupLayout ],
+    });
+
+    const computeSplatVerticesPipeline = gen.device.createComputePipeline({
+        label: "Splat Vertices Pipeline",
+        layout: splatVerticesPipelineLayout,
+        compute: {
+            module: gen.device.createShaderModule({
+                code: splatVerticesWGSL,
+            }),
+        },
+    });
+
+    const linearWorkgroupSize = 32;
+      
+    const commandEncoder = gen.device.createCommandEncoder();
+    const splatVerticesPass = commandEncoder.beginComputePass();
+    splatVerticesPass.setPipeline(computeSplatVerticesPipeline);
+    splatVerticesPass.setBindGroup(0, splatVerticesBindGroup);
+    splatVerticesPass.dispatchWorkgroups(Math.ceil(numMarkers / linearWorkgroupSize));
+    splatVerticesPass.end();
+
+    gen.device.queue.submit([commandEncoder.finish()]);
+}*/
+

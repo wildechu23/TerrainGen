@@ -93,7 +93,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
     
     for (var i = 0u; case_table[case_index * MC_CASE_ELEMENTS + i] != -1; i += 3) {
-        let voxel_start = atomicAdd(&counter[0], 3u);
+        let voxel_start = atomicAdd(&counter[0], 3u); // calculate offsets and remove
         for (var j = 0u; j < 3; j++) {
             let edge = case_table[case_index * MC_CASE_ELEMENTS + i + j];
             let edge_v0 = EDGE_VERTICES[edge].x;
@@ -112,3 +112,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         }
     }
 }
+
+// Split into 2
+// list verts: take marker, convert to z8y8x8_null4_edge4
+// edge4 will hold 0, 3, or 8
+// gen verts: take each z8y8x8_null4_edge4, add to vertices
+// something gotta be done with indexes.
