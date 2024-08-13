@@ -24,7 +24,7 @@ const INDEX_TO_VERTEX: array<vec3u, 8> = array<vec3u, 8>(
     vec3u(0, 1, 1)
 );
 
-@compute @workgroup_size(4, 4, 4)
+@compute @workgroup_size(8, 8, 4)
 fn main(@builtin(global_invocation_id) id: vec3u) {
     if ((id.x >= numPoints - 1 ) || 
         (id.y >= numPoints - 1) || 
@@ -57,5 +57,3 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
 
 }
-
-// TODO: dont count verts, count total 0,3,8 verts

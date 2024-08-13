@@ -3,8 +3,9 @@ import renderMeshWGSL from "./shaders/render_mesh.wgsl?raw";
 import { mat4, vec3 } from 'wgpu-matrix';
 import { WASDCamera } from './camera/camera';
 import { createInputHandler } from './camera/input';
-import { Chunk, createChunk } from './chunk';
-import { initUtils } from './utils'
+import { initChunk, Chunk, createChunk } from './chunk';
+import { initUtils } from './utils';
+import { initNoise } from './noise';
 
 // TODO: GROUP UTIL TABLES INTO OWN GROUP BEFORE BINDING
 
@@ -32,23 +33,31 @@ context.configure({
   format: presentationFormat,
 });
 
-// init utils
+// init
 initUtils(device);
+await initNoise(device);
+initChunk(device);
 
 // generate chunks
-// let chunk = createChunk(device, vec3.create(0, 0, 0));
+// const chunks: Chunk[] = [];
+// createChunk(device, vec3.create(0, 0, 0)).then(
+//   chunk => { if(chunk != null) chunks.push(chunk); }
+// )
 
-const numChunks = 4;
+// createChunk(device, vec3.create(15, 0, 0)).then(
+//   chunk => { if(chunk != null) chunks.push(chunk); }
+// )
+const chunkDistance = 8;
 const chunks: Chunk[] = [];
-for(let x = 0; x < numChunks; x++) {
-  for(let y = 0; y < numChunks; y++) {
-    for(let z = 0; z < numChunks; z++) {
-      const coord = vec3.create(x, y, z);
+for(let x = -chunkDistance; x < chunkDistance; x++) {
+  // for(let y = -chunkDistance; y < chunkDistance; y++) {
+    for(let z = -chunkDistance; z < chunkDistance; z++) {
+      const coord = vec3.create(x * 15, 0, z * 15);
       createChunk(device, coord).then(
         chunk => { if(chunk != null) chunks.push(chunk); }
       );
     }
-  }
+  // }
 }
 
 
@@ -139,8 +148,8 @@ let bindGroup = device.createBindGroup({
 
 
 const camera = new WASDCamera({ 
-  position: vec3.create(0, 0, 0),
-  target: vec3.create(-2, 0, -2)
+  position: vec3.create(0, 1.5, 0),
+  // target: vec3.create(0, 0, 0)
 });
 
 const aspect = canvas.width / canvas.height;

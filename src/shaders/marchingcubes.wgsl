@@ -107,7 +107,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
             // var v = mix(vec3f(INDEX_TO_VERTEX[edge_v0]), vec3f(INDEX_TO_VERTEX[edge_v1]), 0.5);
 
             v += vec3f(voxel) + 0.5;
-            v /= (numPoints - 1);
+            // v /= (numPoints - 1);
             vertices[voxel_start + j] = vec4f(v + uniforms.offset, 1);
         }
     }
