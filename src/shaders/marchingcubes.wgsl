@@ -106,15 +106,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
             
             // var v = mix(vec3f(INDEX_TO_VERTEX[edge_v0]), vec3f(INDEX_TO_VERTEX[edge_v1]), 0.5);
 
-            v += vec3f(voxel) + 0.5;
+            v += vec3f(voxel) + uniforms.offset + 0.5;
             // v /= (numPoints - 1);
-            vertices[voxel_start + j] = vec4f(v + uniforms.offset, 1);
+            vertices[voxel_start + j] = vec4f(v, 1);
         }
     }
 }
-
-// Split into 2
-// list verts: take marker, convert to z8y8x8_null4_edge4
-// edge4 will hold 0, 3, or 8
-// gen verts: take each z8y8x8_null4_edge4, add to vertices
-// something gotta be done with indexes.

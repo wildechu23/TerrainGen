@@ -26,6 +26,7 @@ const INDEX_TO_VERTEX: array<vec3u, 8> = array<vec3u, 8>(
 
 @compute @workgroup_size(8, 8, 4)
 fn main(@builtin(global_invocation_id) id: vec3u) {
+    // No (15, 15, 15)
     if ((id.x >= numPoints - 1 ) || 
         (id.y >= numPoints - 1) || 
         (id.z >= numPoints - 1)) {

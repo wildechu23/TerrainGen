@@ -14,10 +14,9 @@ const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 const inputHandler = createInputHandler(window, canvas);
 
 const adapter = await navigator.gpu.requestAdapter();
-const canTimestamp = adapter?.features.has('timestamp-query');
 const device = await adapter?.requestDevice({
   requiredFeatures: [
-    ...(canTimestamp ? ['timestamp-query' as GPUFeatureName] : []),
+    'float32-filterable' as GPUFeatureName,
   ]
 })!;
 
@@ -48,16 +47,17 @@ initChunk(device);
 //   chunk => { if(chunk != null) chunks.push(chunk); }
 // )
 const chunkDistance = 8;
+const yDistance = 2;
 const chunks: Chunk[] = [];
 for(let x = -chunkDistance; x < chunkDistance; x++) {
-  // for(let y = -chunkDistance; y < chunkDistance; y++) {
+  for(let y = -yDistance; y < yDistance; y++) {
     for(let z = -chunkDistance; z < chunkDistance; z++) {
-      const coord = vec3.create(x * 15, 0, z * 15);
+      const coord = vec3.create(x * 15, y*15, z * 15);
       createChunk(device, coord).then(
         chunk => { if(chunk != null) chunks.push(chunk); }
       );
     }
-  // }
+  }
 }
 
 
@@ -153,7 +153,7 @@ const camera = new WASDCamera({
 });
 
 const aspect = canvas.width / canvas.height;
-const projectionMatrix = mat4.perspective((2 * Math.PI) / 5, aspect, 1, 100.0);
+const projectionMatrix = mat4.perspective((2 * Math.PI) / 5, aspect, 1, 300.0);
 const modelViewProjectionMatrix = mat4.create();
 
 function getModelViewProjectionMatrix(deltaTime: number) {
