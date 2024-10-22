@@ -10,8 +10,6 @@ var<storage, read_write> counters: array<atomic<u32>>;
 @group(0) @binding(3)
 var<storage, read_write> markers: array<u32>;
 
-const numPoints = 16;
-
 const isovalue = 0f;
 const INDEX_TO_VERTEX: array<vec3u, 8> = array<vec3u, 8>(
     vec3u(0, 0, 0),
@@ -27,9 +25,9 @@ const INDEX_TO_VERTEX: array<vec3u, 8> = array<vec3u, 8>(
 @compute @workgroup_size(8, 8, 4)
 fn main(@builtin(global_invocation_id) id: vec3u) {
     // No (15, 15, 15)
-    if ((id.x >= numPoints - 1 ) || 
-        (id.y >= numPoints - 1) || 
-        (id.z >= numPoints - 1)) {
+    if ((id.x >= voxelDimMinusOne) || 
+        (id.y >= voxelDimMinusOne) || 
+        (id.z >= voxelDimMinusOne)) {
         return;
     }
 

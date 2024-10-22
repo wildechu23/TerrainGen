@@ -20,6 +20,8 @@ const device = await adapter?.requestDevice({
   ]
 })!;
 
+device.features.forEach((f) => console.log(f));
+
 const context = canvas.getContext('webgpu') as GPUCanvasContext;
 
 const devicePixelRatio = window.devicePixelRatio;
@@ -46,13 +48,14 @@ initChunk(device);
 // createChunk(device, vec3.create(15, 0, 0)).then(
 //   chunk => { if(chunk != null) chunks.push(chunk); }
 // )
-const chunkDistance = 8;
+
+const chunkDistance = 6;
 const yDistance = 2;
 const chunks: Chunk[] = [];
 for(let x = -chunkDistance; x < chunkDistance; x++) {
   for(let y = -yDistance; y < yDistance; y++) {
     for(let z = -chunkDistance; z < chunkDistance; z++) {
-      const coord = vec3.create(x * 15, y*15, z * 15);
+      const coord = vec3.create(x * 15, y * 15, z * 15);
       createChunk(device, coord).then(
         chunk => { if(chunk != null) chunks.push(chunk); }
       );

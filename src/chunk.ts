@@ -4,7 +4,7 @@ import marchingCubesWGSL from './shaders/marchingcubes.wgsl?raw';
 
 import { Vec3 } from 'wgpu-matrix';
 
-import { numPoints } from './table';
+import { constants, constantsWGSL, raydirsWGSL } from './constants';
 import { caseTable, vertTable } from './utils';
 import { noiseTextures } from './noise';
 
@@ -22,7 +22,9 @@ export interface ChunkGen {
 }
 
 let nearestRepeatSampler: GPUSampler;
+let nearestClampSampler: GPUSampler;
 let linearRepeatSampler: GPUSampler;
+let linearClampSampler: GPUSampler;
 let noiseBindGroupLayout: GPUBindGroupLayout;
 
 let densityShader;
@@ -41,7 +43,7 @@ let marchingPipelineLayout: GPUPipelineLayout;
 let computeMarchingPipeline: GPUComputePipeline;
 
 
-const workgroupCount = numPoints / 4;
+const workgroupCount = constants.voxelDim / 4;
 
 // 16 points per axis
 // 15 voxels per axis
@@ -53,11 +55,11 @@ export function initChunk(device: GPUDevice) {
     });
 
     activeVoxelsShader = device.createShaderModule({
-        code: activeVoxelsWGSL,
+        code: constantsWGSL + activeVoxelsWGSL,
     });
 
     marchingCubesShader = device.createShaderModule({
-        code: marchingCubesWGSL,
+        code: constantsWGSL + raydirsWGSL + marchingCubesWGSL,
     });
 
     // Samplers
@@ -70,6 +72,15 @@ export function initChunk(device: GPUDevice) {
         addressModeW: 'repeat',
     });
 
+    nearestClampSampler = device.createSampler({
+        minFilter: 'nearest',
+        magFilter: 'nearest',
+        mipmapFilter: 'nearest',
+        addressModeU: 'clamp-to-edge',
+        addressModeV: 'clamp-to-edge',
+        addressModeW: 'clamp-to-edge',
+    });
+
     linearRepeatSampler = device.createSampler({
         minFilter: 'linear',
         magFilter: 'linear',
@@ -77,6 +88,15 @@ export function initChunk(device: GPUDevice) {
         addressModeU: 'repeat',
         addressModeV: 'repeat',
         addressModeW: 'repeat',
+    });
+
+    linearClampSampler = device.createSampler({
+        minFilter: 'linear',
+        magFilter: 'linear',
+        mipmapFilter: 'linear',
+        addressModeU: 'clamp-to-edge',
+        addressModeV: 'clamp-to-edge',
+        addressModeW: 'clamp-to-edge',
     });
 
     // Noise
@@ -167,7 +187,7 @@ export function initChunk(device: GPUDevice) {
             binding: 0,
             visibility: GPUShaderStage.COMPUTE,
             texture: {
-                sampleType: "unfilterable-float",
+                sampleType: "float",
                 viewDimension: "3d",
             },
         }, {
@@ -210,7 +230,7 @@ export function initChunk(device: GPUDevice) {
             visibility: GPUShaderStage.COMPUTE,
             texture: {
                 viewDimension: "3d",
-                sampleType: "unfilterable-float",
+                sampleType: "float",
             }
         }, {
             binding: 1,
@@ -240,6 +260,18 @@ export function initChunk(device: GPUDevice) {
             buffer: {
                 type: "storage"
             }
+        }, {
+            binding: 6,
+            visibility: GPUShaderStage.COMPUTE,
+            sampler: {
+                type: 'filtering'
+            }
+        }, {
+            binding: 7,
+            visibility: GPUShaderStage.COMPUTE,
+            sampler: {
+                type: 'filtering'
+            }
         }]
     });
 
@@ -258,22 +290,8 @@ export function initChunk(device: GPUDevice) {
 }
 
 export async function createChunk(device: GPUDevice, coord: Vec3) {
-    // const querySet = device.createQuerySet({
-    //     type: 'timestamp',
-    //     count: 6,
-    // });
-    // const resolveBuffer = device.createBuffer({
-    //     size: querySet.count * 8,
-    //     usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
-    // });
-
-    // const resultBuffer =  device.createBuffer({
-    //     size: resolveBuffer.size,
-    //     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-    // });
-
     let volumeTexture = device.createTexture({
-        size: [numPoints, numPoints, numPoints],
+        size: [constants.voxelDim, constants.voxelDim, constants.voxelDim],
         format: "r32float",
         dimension: "3d",
         usage:
@@ -282,7 +300,7 @@ export async function createChunk(device: GPUDevice, coord: Vec3) {
     });
 
     const voxelMarkerBuffer: GPUBuffer = device.createBuffer({
-        size: (numPoints - 1) * (numPoints - 1) * (numPoints - 1) * 4,
+        size: constants.voxelDimMinusOne * constants.voxelDimMinusOne * constants.voxelDimMinusOne * 4,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
 
@@ -318,7 +336,7 @@ export async function createChunk(device: GPUDevice, coord: Vec3) {
     gen.voxelMarkerBuffer.destroy();
 
     const chunk: Chunk = { coord: coord, vertices: gen.vertices };
-    console.log(chunk.coord);
+    // console.log(chunk.coord);
     return chunk;
 }
 
@@ -330,7 +348,7 @@ async function createDensityTexture(gen: ChunkGen) {
     gen.device.queue.writeBuffer(uniformBuffer, 0, gen.coord as Float32Array);
 
     let densityTexture = gen.device.createTexture({
-        size: [numPoints, numPoints, numPoints],
+        size: [constants.voxelDim, constants.voxelDim, constants.voxelDim],
         format: "r32float",
         dimension: "3d",
         usage:
@@ -374,25 +392,32 @@ async function createDensityTexture(gen: ChunkGen) {
         { texture: densityTexture },
         { texture: gen.volumeTexture },
         {
-            width: numPoints,
-            height: numPoints,
-            depthOrArrayLayers: numPoints,
+            width: constants.voxelDim,
+            height: constants.voxelDim,
+            depthOrArrayLayers: constants.voxelDim,
         },
     );
     gen.device.queue.submit([commandEncoder.finish()]);
 }
 
 async function findActiveVoxels(gen: ChunkGen, counters: Uint32Array) {
-    const counterBuffer = gen.device.createBuffer({
-        size: 8,
-        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-    });
     const stagingBuffer = gen.device.createBuffer({
         size: 8,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
+    
+    const counterBuffer = gen.device.createBuffer({
+        size: 8,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
 
-
+    /*
+        Bind Group:
+        - 0: densityTexture
+        - 1: vertices count table
+        - 2: staging buffer for counters
+        - 3: marker buffer
+    */
     const activeVoxelsBindGroup = gen.device.createBindGroup({
         label: "Active Voxels Bind Group",
         layout: activeVoxelsBindGroupLayout,
@@ -414,10 +439,12 @@ async function findActiveVoxels(gen: ChunkGen, counters: Uint32Array) {
 
     commandEncoder.copyBufferToBuffer(stagingBuffer, 0, counterBuffer, 0, 8);
     gen.device.queue.submit([commandEncoder.finish()]);
+    
+    // TODO: WHY DOES THIS UNMAP TAKE 500 MS
+    counterBuffer.mapAsync(GPUMapMode.READ);
     await gen.device.queue.onSubmittedWorkDone();
 
-    // WHY DOES THIS TAKE 500 MS
-    await counterBuffer.mapAsync(GPUMapMode.READ);
+
     const arr = new Uint32Array(counterBuffer.getMappedRange());
     counters[0] = arr[0];
     counters[1] = arr[1];
@@ -438,7 +465,20 @@ async function createMarchingCubesVertices(gen: ChunkGen, numMarkers: number) {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
     })
 
+    const readBuffer: GPUBuffer = gen.device.createBuffer({
+        size: gen.vertices.size,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    })
 
+    /*
+        Bind group:
+        - 0: densityTexture
+        - 1: marker buffer
+        - 2: case table
+        - 3: vertices buffer
+        - 4: uniform buffer (voxel offset)
+        - 5: counter buffer 
+    */
     const marchingBindGroup = gen.device.createBindGroup({
         label: "Marching Cubes Bind Group",
         layout: marchingBindGroupLayout,
@@ -448,7 +488,9 @@ async function createMarchingCubesVertices(gen: ChunkGen, numMarkers: number) {
             { binding: 2, resource: { buffer: caseTable } },
             { binding: 3, resource: { buffer: gen.vertices } },
             { binding: 4, resource: { buffer: uniformBuffer } },
-            { binding: 5, resource: { buffer: counterBuffer } }
+            { binding: 5, resource: { buffer: counterBuffer } },
+            { binding: 6, resource: linearClampSampler },
+            { binding: 7, resource: nearestClampSampler },
         ],
     });
 
@@ -461,6 +503,16 @@ async function createMarchingCubesVertices(gen: ChunkGen, numMarkers: number) {
     marchingCubesPass.dispatchWorkgroups(Math.ceil(numMarkers / linearWorkgroupSize));
     marchingCubesPass.end();
 
+    commandEncoder.copyBufferToBuffer(gen.vertices, 0, readBuffer, 0, gen.vertices.size);
+
     gen.device.queue.submit([commandEncoder.finish()]);
+
+    await gen.device.queue.onSubmittedWorkDone();
+
+    await readBuffer.mapAsync(GPUMapMode.READ);
+    const arr = new Float32Array(readBuffer.getMappedRange());
+    const arr2 = Array.from(arr);
+    console.log(arr2);
+    readBuffer.unmap(); 
 }
 

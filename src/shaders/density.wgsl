@@ -1,3 +1,5 @@
+// include constants
+
 @group(0) @binding(0)
 var out_texture: texture_storage_3d<r32float, write>;
 
@@ -26,18 +28,9 @@ struct Uniform {
 @group(0) @binding(1)
 var<uniform> uniforms: Uniform;
 
-
-const numPoints = 16;
+// Noise texture constants
 const NOISE_LATTICE_SIZE = 16;
 const INV_LATTICE_SIZE = 1.0 / NOISE_LATTICE_SIZE;
-
-// mat4x4<float> octaveMat0 = mat4x4<float>(
-//     vec4<float>(1.0, 0.0, 0.0, 0.0),
-//     vec4<float>(0.0, 1.0, 0.0, 0.0),
-//     vec4<float>(0.0, 0.0, 1.0, 0.0),
-//     vec4<float>(0.0, 0.0, 0.0, 1.0)
-// );
-
 
 fn NLQu(uvw: vec3f, tex: texture_3d<f32>) -> vec4f {
     return textureSampleLevel(tex, linearRepeat, uvw, 0f);
@@ -92,7 +85,7 @@ fn NHQs(uvw: vec3f, tex: texture_3d<f32>, tex_smooth: f32) -> f32 {
 @workgroup_size(8, 8, 4)
 fn main(@builtin(global_invocation_id) id : vec3u) {
     var ws = uniforms.offset + vec3f(id);
-    var density = -ws.y;
+    var density = -ws.y + 1;
 
     
     // var uulf_rand  = clamp( NMQu(ws*0.000718, noise0_texture) * 2 - 0.5, vec4f(0, 0, 0, 0), vec4f(1, 1, 1, 1) );
@@ -118,10 +111,6 @@ fn main(@builtin(global_invocation_id) id : vec3u) {
             + NMQs(ws*0.0025*1.045,       noise2_texture).x*20*0.9 // MQ
             // + NHQs(c7*0.0012*0.972, packedNoise3_texture).x*40*0.8 // HQ and *rotated*!
         );
-
-    // density += textureLoad(noise0_texture, vec3i(vec3f(id)*4.03 % 16), 0).x * 0.25;
-    // density += textureLoad(noise1_texture, vec3i(vec3f(id)*1.96 % 16), 0).x * 0.5;
-    // density += textureLoad(noise2_texture, vec3i(vec3f(id)*1.01 % 15), 0).x * 1;
 
     textureStore(out_texture, id, vec4f(density, 0, 0, 1));
 }

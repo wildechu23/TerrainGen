@@ -6,6 +6,7 @@ struct VertexOutput {
     // This is the equivalent of gl_Position in GLSL
     @builtin(position) position: vec4f,
     @location(0) world_pos: vec3f,
+    @location(1) coord_ambo: vec4f,
 };
 
 struct ViewParams {
@@ -23,13 +24,17 @@ fn vertex_main(vert: VertexInput) -> VertexOutput {
     out.position = params.proj_view * vec4f(pos, 1.0);
     // out.position = vert.position;
     out.world_pos = pos;
+    out.coord_ambo = vert.position;
     return out;
 };
 
 @fragment
 fn fragment_main(in: VertexOutput) -> @location(0) vec4f {
+    // var ambo = clamp(in.coord_ambo.w * 2.1 - 0.1, 0, 1);
+    var ambo = in.coord_ambo.w;
+    
     let dx = dpdx(in.world_pos);
     let dy = dpdy(in.world_pos);
     let n = normalize(cross(dx, dy));
-    return vec4f((n + 1.0) * 0.5, 1.0);
+    return vec4f((ambo + 0.1) * 0.5 * (n + 1.0), 1.0);
 }

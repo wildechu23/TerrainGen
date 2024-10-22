@@ -1,4 +1,3 @@
-export const numPoints = 16;
 export const MC_CASE_TABLE = new Int32Array([
     -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 8, 3, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
